@@ -80,7 +80,7 @@ class ChewingConfig:
     def getConfigDir(self):
         config_dir = os.path.join(
             os.path.expandvars("%APPDATA%"), "PIME", "chewing")
-        os.makedirs(config_dir, mode=0o700, exist_ok=True)
+        os.makedirs(config_dir, exist_ok=True)
         return config_dir
 
     def getConfigFile(self, name="config.json"):
@@ -124,8 +124,8 @@ class ChewingConfig:
         filename = self.getConfigFile()
         try:
             with open(filename, "w") as f:
-                json = self.toJson()
-                js = json.dump(json, f, indent=4)
+                config_data = self.toJson()
+                json.dump(config_data, f, indent=4)
             self.update()
         except Exception:
             pass  # FIXME: handle I/O errors?

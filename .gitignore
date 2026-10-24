@@ -1,0 +1,13 @@
+.vs
+build
+build64
+build_arm64/
+node/input_methods/McBopomofo
+node/input_methods/McFoxim
+node/input_methods/McTabim
+node/input_methods/emojime/dist
+installer/*.exe
+PIMELauncher/target/
+.claude/
+cleanup_x64.ps1
+replace_x64_dll.ps1

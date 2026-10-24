@@ -45,7 +45,9 @@ TextService::TextService(ImeModule* module):
 	candPerRow_(10),
 	selKeys_(L"1234567890"),
 	candUseCursor_(false),
-	candFontSize_(12) {
+	candFontSize_(12),
+	popupMenu_(nullptr),
+	currentLangProfile_(GUID_NULL) {
 
 	// font for candidate and mesasge windows
 	font_ = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
@@ -255,7 +257,8 @@ void TextService::updateCandidates(Ime::EditSession* session) {
 		::DeleteObject(font_); // delete old font
 		lf.lfHeight = candFontHeight(); // apply the new size
 		if (!candFontName_.empty()) { // apply new font name
-			wcsncpy(lf.lfFaceName, candFontName_.c_str(), 31);
+			wcsncpy(lf.lfFaceName, candFontName_.c_str(), LF_FACESIZE - 1);
+			lf.lfFaceName[LF_FACESIZE - 1] = L'\0';
 		}
 		font_ = CreateFontIndirect(&lf); // create new font
 		// if (messageWindow_)
@@ -270,8 +273,8 @@ void TextService::updateCandidates(Ime::EditSession* session) {
 
 	// the items in the candidate list should not exist the
 	// number of available keys used to select them.
-	assert(candidates_.size() <= selKeys_.size());
-	for (int i = 0; i < candidates_.size(); ++i) {
+	size_t count = std::min<size_t>(candidates_.size(), selKeys_.size());
+	for (size_t i = 0; i < count; ++i) {
 		candidateWindow_->add(candidates_[i], selKeys_[i]);
 	}
 	candidateWindow_->recalculateSize();

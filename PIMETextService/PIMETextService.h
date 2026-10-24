@@ -38,6 +38,10 @@ class TextService: public Ime::TextService {
 public:
 	TextService(ImeModule* module);
 
+	ImeModule* imeModule() const {
+		return static_cast<ImeModule*>(static_cast<Ime::ImeModule*>(Ime::TextService::imeModule()));
+	}
+
 	virtual void onActivate();
 	virtual void onDeactivate();
 
@@ -164,10 +168,10 @@ private:
 	std::wstring candFontName_;
 	int candFontSize_;
 
-	HMENU popupMenu_;
+	HMENU popupMenu_{nullptr};
 
 	std::unique_ptr<Client> client_; // connection client
-	GUID currentLangProfile_;
+	GUID currentLangProfile_{GUID_NULL};
 };
 
 }

@@ -25,7 +25,7 @@ class PhraseToJson(object):
         self.chardefs = {}
 
     def run(self, file, filePath):
-        self.jsonFile = re.sub('\.dat$', '', file) + '.json'
+        self.jsonFile = re.sub(r'\.dat$', '', file) + '.json'
         
         with io.open(filePath, encoding='utf-8') as fs:
             for line in fs:
@@ -63,7 +63,7 @@ class PhraseToJson(object):
 
     def getJsonDir(self):
         json_dir = os.path.join(self.curdir, os.pardir, "data")
-        os.makedirs(json_dir, mode=0o700, exist_ok=True)
+        os.makedirs(json_dir, exist_ok=True)
         return json_dir
 
 

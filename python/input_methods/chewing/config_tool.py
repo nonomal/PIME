@@ -25,12 +25,10 @@ import json
 
 current_dir = os.path.dirname(__file__)
 
-# The libchewing package is not in the default python path.
-# FIXME: set PYTHONPATH properly so we don't need to add this hack.
-sys.path.append(os.path.dirname(os.path.dirname(current_dir)))
-sys.path.append(current_dir)
-
-from chewing_config import chewingConfig
+try:
+    from input_methods.chewing.chewing_config import chewingConfig
+except ModuleNotFoundError:
+    from chewing_config import chewingConfig
 from libchewing import ChewingContext, CHEWING_DATA_DIR
 from ctypes import c_uint, byref, create_string_buffer
 
@@ -57,6 +55,14 @@ class BaseHandler(tornado.web.RequestHandler):
 
     def prepare(self):  # called before every request
         self.application.reset_timeout()  # reset the quit server timeout
+
+
+class NoCacheStaticFileHandler(tornado.web.StaticFileHandler):
+
+    def set_extra_headers(self, path):
+        self.set_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.set_header("Pragma", "no-cache")
+        self.set_header("Expires", "0")
 
 
 class KeepAliveHandler(BaseHandler):
@@ -89,13 +95,13 @@ class ConfigHandler(BaseHandler):
         os.makedirs(config_dir, exist_ok=True)
         # write the config to files
         config = data.get("config", None)
-        if config:
+        if config is not None:
             self.save_file("config.json", json.dumps(config, indent=2))
         symbols = data.get("symbols", None)
-        if symbols:
+        if symbols is not None:
             self.save_file("symbols.dat", symbols)
         swkb = data.get("swkb", None)
-        if swkb:
+        if swkb is not None:
             self.save_file("swkb.dat", swkb)
         self.write('{"return":true}')
 
@@ -230,7 +236,7 @@ class LoginHandler(BaseHandler):
             self.set_cookie(COOKIE_ID, token)
             if page_name != "user_phrase_editor":
                 page_name = "config_tool"
-            self.redirect("/{}.html".format(page_name))
+            self.redirect("/{}.html?v={}".format(page_name, token[:8]))
 
 
 class ConfigApp(tornado.web.Application):
@@ -244,9 +250,9 @@ class ConfigApp(tornado.web.Application):
             "debug": True
         }
         handlers = [
-            (r"/(.*\.html)", tornado.web.StaticFileHandler, {"path": current_dir}),
-            (r"/((css|images|js|fonts)/.*)", tornado.web.StaticFileHandler, {"path": current_dir}),
-            (r"/(version.txt)", tornado.web.StaticFileHandler, {"path": os.path.join(current_dir, "../../../")}),
+            (r"/(.*\.html)", NoCacheStaticFileHandler, {"path": current_dir}),
+            (r"/((css|images|js|fonts)/.*)", NoCacheStaticFileHandler, {"path": current_dir}),
+            (r"/(version.txt)", NoCacheStaticFileHandler, {"path": os.path.join(current_dir, "../../../")}),
             (r"/config", ConfigHandler),  # main configuration handler
             (r"/user_phrases", UserPhraseHandler),  # user phrase editor
             (r"/user_phrase_file", UserPhraseFileHandler),  # export user phrase

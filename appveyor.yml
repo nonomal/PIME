@@ -1,21 +1,31 @@
 skip_tags: true
 pull_requests:
-  do_not_increment_build_number: true
+    do_not_increment_build_number: true
 
-version: '{branch} build {build}'
-image: Visual Studio 2019
+version: "{branch} build {build}"
+image: Visual Studio 2026
 
 init:
-  - git --version
-  - git config --global core.autocrlf true
+    - git --version
+    - git config --global core.autocrlf true
 
 install:
-  - git submodule init
-  - git submodule update
+    - appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
+    - rustup-init.exe -y --default-toolchain stable --default-host i686-pc-windows-msvc
+    - set PATH=%PATH%;%USERPROFILE%\.cargo\bin
+    - git submodule init
+    - git submodule update
+
+    # The appveyor image contains cmake 4.1 only, which doesn't support VS 2026.
+    # Download cmake 4.3.0 and add it to the PATH.
+    - appveyor DownloadFile https://github.com/Kitware/CMake/releases/download/v4.3.0/cmake-4.3.0-windows-x86_64.zip -FileName cmake43.zip
+    - 7z x cmake43.zip -oC:\cmake43
+    - set "PATH=C:\cmake43\cmake-4.3.0-windows-x86_64\bin;%PATH%"
+    - cmake --version   # should print 4.3.0
 
 build_script:
-  - .\build.bat
+    - .\build.bat
 
 after_build:
-  - appveyor.after_build.bat
-  - ps: .\appveyor.artifacts.ps1
+    - appveyor.after_build.bat
+    - ps: .\appveyor.artifacts.ps1

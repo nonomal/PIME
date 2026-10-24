@@ -1,4 +1,8 @@
-﻿;
+; NOTE: This file MUST be saved as UTF-8 with BOM (utf-8-sig) so that
+; NSIS (makensis) natively detects Unicode strings without breaking Git diffs.
+; Do NOT convert this file to UTF-16.
+;
+;
 ;	Copyright (C) 2013 - 2016 Hong Jen Yee (PCMan) <pcman.tw@gmail.com>
 ;
 ;	This library is free software; you can redistribute it and/or
@@ -30,9 +34,7 @@
 ; We need the MD5 plugin
 !addplugindir /x86-unicode "md5dll\UNICODE"
 
-; We need the INetC (internet client) plugin
-; https://nsis.sourceforge.io/Inetc_plug-in
-!addplugindir /x86-unicode "inetc\Plugins\x86-unicode"
+!include "macros.nsh"
 
 Unicode true ; turn on Unicode (This requires NSIS 3.0)
 SetCompressor /SOLID lzma ; use LZMA for best compression ratio
@@ -100,9 +102,6 @@ RequestExecutionLevel admin
 !insertmacro LANG_LOAD "SimpChinese" ; Simplified Chinese
 !insertmacro LANG_LOAD "English" ; English
 
-var UPDATEX86DLL
-var UPDATEX64DLL
-
 var INST_PYTHON
 var INST_CINBASE
 var INST_NODE
@@ -121,112 +120,43 @@ Function uninstallOldVersion
 			MessageBox MB_OKCANCEL|MB_ICONQUESTION $(UNINSTALL_OLD) /SD IDOK IDOK +2
 			Abort ; this is skipped if the user select OK
 
-			; Remove the launcher from auto-start
-			DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PIME"
-			DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "PIMELauncher"
-			DeleteRegKey HKLM "Software\PIME"
+			; Ask running PIMELauncher to quit gracefully
+			!insertmacro StopPIMELauncher
 
 			; Unregister COM objects (NSIS UnRegDLL command is broken and cannot be used)
-			ExecWait '"$SYSDIR\regsvr32.exe" /u /s "$INSTDIR\x86\PIMETextService.dll"'
-			; Verify the MD5/SHA1 checksum of 32-bit PIMETextService.dll
-			StrCpy $0 "$INSTDIR\x86\PIMETextService.dll"
-			md5dll::GetMD5File "$0"
-			Pop $1
-			StrCpy $2 "$PLUGINSDIR\PIMETextService_x86.dll"
-			md5dll::GetMD5File "$2"
-			Pop $3
-			${If} $1 == $3
-				StrCpy $UPDATEX86DLL "False"
-			${Else}
-				RMDir /REBOOTOK /r "$INSTDIR\x86"
+			!insertmacro UnregisterTextService 32 "$INSTDIR\x86\PIMETextService.dll"
+			${If} ${IsNativeAMD64}
+				!insertmacro UnregisterTextService 64 "$INSTDIR\x64\PIMETextService.dll"
+			${ElseIf} ${IsNativeARM64}
+				!insertmacro UnregisterTextService 64 "$INSTDIR\arm64\PIMETextService.dll"
 			${EndIf}
 
-			${If} ${RunningX64}
-				SetRegView 64 ; disable registry redirection and use 64 bit Windows registry directly
-				ExecWait '"$SYSDIR\regsvr32.exe" /u /s "$INSTDIR\x64\PIMETextService.dll"'
-				; Verify the MD5/SHA1 checksum of 64-bit PIMETextService.dll
-				StrCpy $0 "$INSTDIR\x64\PIMETextService.dll"
-				md5dll::GetMD5File "$0"
-				Pop $1
-				StrCpy $2 "$PLUGINSDIR\PIMETextService_x64.dll"
-				md5dll::GetMD5File "$2"
-				Pop $3
-				${If} $1 == $3
-					StrCpy $UPDATEX64DLL "False"
-				${Else}
-					RMDir /REBOOTOK /r "$INSTDIR\x64"
-				${EndIf}
-			${EndIf}
+			; Remove the launcher from auto-start and clean registry
+			!insertmacro CleanPIMERegistry
 
-			; Try to terminate running PIMELauncher and the server process
-			; Otherwise we cannot replace it.
-			ExecWait '"$INSTDIR\PIMELauncher.exe" /quit'
-			Sleep 1000
-			Delete /REBOOTOK "$INSTDIR\PIMELauncher.exe"
+			; Safely remove or rename old binaries so the destination paths are free for writing.
+			; If files are locked by running applications, SafeDeleteFile renames them to unique
+			; temporary files scheduled for deletion on reboot without blocking immediate installation.
+			!insertmacro CleanOldBinaries
 
-            Delete "$INSTDIR\backends.json"
-			RMDir /REBOOTOK /r "$INSTDIR\python"
-			RMDir /REBOOTOK /r "$INSTDIR\node"
+			; Clean old backend and data files
+			Delete "$INSTDIR\backends.json"
+			RMDir /r "$INSTDIR\python"
+			RMDir /r "$INSTDIR\node"
 
 			; Only exist in earlier versions, but need to delete it.
-			RMDir /REBOOTOK /r "$INSTDIR\server"
+			RMDir /r "$INSTDIR\server"
 
 			; Delete shortcuts in Start Menu
 			RMDir /r "$SMPROGRAMS\$(PRODUCT_NAME)"
 
 			Delete "$INSTDIR\version.txt"
 			Delete "$INSTDIR\Uninstall.exe"
-			RMDir /REBOOTOK "$INSTDIR"
 
 			${If} ${RebootFlag}
-				MessageBox MB_YESNO "$(MB_REBOOT_REQUIRED)" /SD IDNO IDNO +3
-				Reboot
-				Quit
-				Abort
-			${EndIf}
-		${EndIf}
-	${EndIf}
-
-	ClearErrors
-	; Ensure that old files are all deleted
-	${If} ${RunningX64}
-		${If} ${FileExists} "$INSTDIR\x64\PIMETextService.dll"
-			; Verify the MD5/SHA1 checksum of 64-bit PIMETextService.dll
-			StrCpy $0 "$INSTDIR\x64\PIMETextService.dll"
-			md5dll::GetMD5File "$0"
-			Pop $1
-			StrCpy $2 "$PLUGINSDIR\PIMETextService_x64.dll"
-			md5dll::GetMD5File "$2"
-			Pop $3
-			${If} $1 == $3
-				StrCpy $UPDATEX64DLL "False"
-			${Else}
-				Delete /REBOOTOK "$INSTDIR\x64\PIMETextService.dll"
-				IfErrors 0 +2
-					Call .onInstFailed
-			${EndIf}
-		${EndIf}
-	${EndIf}
-
-	${If} ${FileExists} "$INSTDIR\x86\PIMETextService.dll"
-		; Verify the MD5/SHA1 checksum of 32-bit PIMETextService.dll
-		StrCpy $0 "$INSTDIR\x86\PIMETextService.dll"
-		md5dll::GetMD5File "$0"
-		Pop $1
-		StrCpy $2 "$PLUGINSDIR\PIMETextService_x86.dll"
-		md5dll::GetMD5File "$2"
-		Pop $3
-		${If} $1 == $3
-			StrCpy $UPDATEX86DLL "False"
-		${Else}
-			Delete /REBOOTOK "$INSTDIR\x86\PIMETextService.dll"
-			IfErrors 0 +2
 				Call .onInstFailed
+			${EndIf}
 		${EndIf}
-	${EndIf}
-
-	${If} ${RebootFlag}
-		Call .onInstFailed
 	${EndIf}
 FunctionEnd
 
@@ -257,15 +187,27 @@ Function .onInit
 		Quit
 	${EndIf}
 
+	; The installer is an x86 (32-bit) binary. On 64-bit Windows (x64 and ARM64),
+	; the WOW64 subsystem automatically redirects all registry writes to WOW6432Node.
+	; Enable 64-bit registry view globally so NSIS registry commands (WriteRegStr,
+	; ReadRegStr, DeleteRegKey) target native 64-bit keys (HKLM\Software\PIME, Run,
+	; and Uninstall\PIME), allowing 64-bit apps and the OS uninstaller to find PIME.
 	${If} ${RunningX64}
-		SetRegView 64 ; disable registry redirection and use 64 bit Windows registry directly
+	${OrIf} ${IsNativeARM64}
+		SetRegView 64
 	${EndIf}
 
-	File "/oname=$PLUGINSDIR\PIMETextService_x86.dll" "..\build\PIMETextService\Release\PIMETextService.dll"
-	File "/oname=$PLUGINSDIR\PIMETextService_x64.dll" "..\build64\PIMETextService\Release\PIMETextService.dll"
+	; Check if an earlier uninstallation or update scheduled locked files or directories
+	; to be deleted on reboot. If so, reinstalling before rebooting will cause Windows
+	; Session Manager to wipe the newly installed files on the next restart.
+	!insertmacro CheckPendingFileRename "$INSTDIR" $R0
+	${If} $R0 == "True"
+		MessageBox MB_YESNO|MB_ICONEXCLAMATION $(PENDING_REBOOT_QUESTION) /SD IDYES IDYES +2
+		Quit
+		Reboot
+	${EndIf}
 
-	StrCpy $UPDATEX86DLL "True"
-	StrCpy $UPDATEX64DLL "True"
+
 
 	StrCpy $INST_PYTHON "False"
 	StrCpy $INST_CINBASE "False"
@@ -289,74 +231,6 @@ Function .onInstFailed
 	${EndIf}
 FunctionEnd
 
-Function ensureVCRedist
-	; Check if we have latest VC++ Redistributable
-	; Reference: https://blogs.msdn.microsoft.com/vcblog/2015/03/03/introducing-the-universal-crt/
-	;            https://docs.python.org/3/using/windows.html#embedded-distribution
-	${IfNot} ${FileExists} "$SYSDIR\ucrtbase.dll"
-	${OrIfNot} ${FileExists} "$SYSDIR\msvcp140.dll"
-		${If} ${RunningX64}
-			; In 64-bit environment, we need to check both x86 and x64 version of dlls,
-			; because we only need at least one of the x86 or x64 version is available,
-			; which means we need to check both these 2 directory:
-			;   1. C:\Windows\System32 (x64 64-bit version dlls are in here)
-			;   2. C:\Windows\SysWOW64 (x86 32-bit version dlls are in here) (already checked)
-
-			; Because X64 FS Redirection is enabled by default ($SYSDIR is pointed to C:\Windows\SysWOW64),
-			; now we just need to disable X64 FS Redirection (let $SYSDIR point to C:\Windows\System32)
-			; in order to check if we have x64 64-bit version of Universal CRT
-			${DisableX64FSRedirection}
-			${IfNot} ${FileExists} "$SYSDIR\ucrtbase.dll"
-			${OrIfNot} ${FileExists} "$SYSDIR\msvcp140.dll"
-				MessageBox MB_YESNO|MB_ICONQUESTION $(DOWNLOAD_VCREDIST_QUESTION) IDYES +2
-					Abort ; this is skipped if the user select Yes
-				; Download latest VC++ Redistributable (x64 version)
-				inetc::get "https://aka.ms/vs/17/release/vc_redist.x64.exe" "$TEMP\vc_redist.x64.exe"
-				Pop $R0 ; Get the return value
-				${If} $R0 != "OK"
-					MessageBox MB_ICONSTOP|MB_OK $(DOWNLOAD_VCREDIST_FAILED_MESSAGE)
-					Abort
-				${EndIf}
-
-				; Run vcredist installer
-				ExecWait "$TEMP\vc_redist.x64.exe" $0
-
-				; Check again if we have latest VC++ Redistributable
-				${IfNot} ${FileExists} "$SYSDIR\ucrtbase.dll"
-				${OrIfNot} ${FileExists} "$SYSDIR\msvcp140.dll"
-					MessageBox MB_ICONSTOP|MB_OK $(INST_VCREDIST_FAILED_MESSAGE)
-					ExecShell "open" "https://support.microsoft.com/en-us/kb/2999226"
-					Abort
-				${EndIf}
-			${EndIf}
-
-			; Change X64 FS Redirection back to default state
-			${EnableX64FSRedirection}
-		${Else}
-			MessageBox MB_YESNO|MB_ICONQUESTION $(DOWNLOAD_VCREDIST_QUESTION) IDYES +2
-				Abort ; this is skipped if the user select Yes
-			; Download latest VC++ Redistributable (x86 version)
-			inetc::get "https://aka.ms/vs/17/release/vc_redist.x86.exe" "$TEMP\vc_redist.x86.exe"
-			Pop $R0 ; Get the return value
-			${If} $R0 != "OK"
-				MessageBox MB_ICONSTOP|MB_OK $(DOWNLOAD_VCREDIST_FAILED_MESSAGE)
-				Abort
-			${EndIf}
-
-			; Run vcredist installer
-			ExecWait "$TEMP\vc_redist.x86.exe" $0
-
-			; Check again if we have latest VC++ Redistributable
-			${IfNot} ${FileExists} "$SYSDIR\ucrtbase.dll"
-			${OrIfNot} ${FileExists} "$SYSDIR\msvcp140.dll"
-				MessageBox MB_ICONSTOP|MB_OK $(INST_VCREDIST_FAILED_MESSAGE)
-				ExecShell "open" "https://support.microsoft.com/en-us/kb/2999226"
-				Abort
-			${EndIf}
-		${EndIf}
-	${EndIf}
-FunctionEnd
-
 ;Installer Type
 InstType "$(INST_TYPE_STD)"
 InstType "$(INST_TYPE_FULL)"
@@ -364,13 +238,6 @@ InstType "$(INST_TYPE_FULL)"
 ;Installer Sections
 Section $(SECTION_MAIN) SecMain
 	SectionIn 1 2 RO
-	; Ensure that we have latest VC++ runtime (for python)
-	Call ensureVCRedist
-
-	; TODO: may be we can automatically rebuild the dlls here.
-	; http://stackoverflow.com/questions/24580/how-do-you-automate-a-visual-studio-build
-	; For example, we can build the Visual Studio solution with the following command line.
-	; C:\Program Files (x86)\Microsoft Visual Studio 12.0\Common7\IDE\devenv.com "..\build\PIME.sln" /build Release
 
 	SetOverwrite on ; overwrite existing files
 	SetOutPath "$INSTDIR"
@@ -381,8 +248,11 @@ Section $(SECTION_MAIN) SecMain
     ; Install backend informations
     File "..\backends.json"
 
+	; Safely clean/rename old binaries before writing new ones
+	!insertmacro CleanOldBinaries
+
 	; Install the launcher responsible to launch the backends
-	File "..\build\PIMELauncher\Release\PIMELauncher.exe"
+	File "..\build\PIMELauncher\PIMELauncher.exe"
 SectionEnd
 
 SectionGroup /e $(PYTHON_SECTION_GROUP) python_section_group
@@ -506,10 +376,36 @@ SectionGroupEnd
 
 SectionGroup /e $(NODE_SECTION_GROUP) node_section_group
 	SectionGroup /e $(NODE_CHT_SECTION_GROUP) node_cht_section_group
+		Section $(MCBOPOMOFO) McBopomofo
+				SectionIn 2
+				SetOutPath "$INSTDIR\node\input_methods\McBopomofo"
+				File /r /x "server.js" /x "webpack_check.js" /x "run_*.bat" /x "README.md" /x "*.txt" "..\node\input_methods\McBopomofo\*.*"
+				StrCpy $INST_NODE "True"
+				StrCpy $INST_PYTHON "True"
+		SectionEnd
+
+		Section $(MCFOXIM) McFoxim
+				SectionIn 2
+				SetOutPath "$INSTDIR\node\input_methods\McFoxim"
+				File /r /x "server.js" /x "webpack_check.js" /x "run_*.bat" /x "README.md" /x "*.txt" "..\node\input_methods\McFoxim\*.*"
+				StrCpy $INST_NODE "True"
+				StrCpy $INST_PYTHON "True"
+		SectionEnd
+
+		Section $(MCTABIM) McTabim
+				SectionIn 2
+				SetOutPath "$INSTDIR\node\input_methods\McTabim"
+				File /r /x "server.js" /x "webpack_check.js" /x "run_*.bat" /x "README.md" /x "*.txt" "..\node\input_methods\McTabim\*.*"
+				StrCpy $INST_NODE "True"
+				StrCpy $INST_PYTHON "True"
+		SectionEnd
+
 		Section $(EMOJIME) emojime
 				SectionIn 2
 				SetOutPath "$INSTDIR\node\input_methods\emojime"
-				File /r "..\node\input_methods\emojime\*.*"
+				File /oname=index.js "..\node\input_methods\emojime\dist\index.js"
+				File "..\node\input_methods\emojime\ime.json"
+				File "..\node\input_methods\emojime\icon.ico"
 				StrCpy $INST_NODE "True"
 		SectionEnd
 	SectionGroupEnd
@@ -550,20 +446,25 @@ Section "" Register
 	${EndIf}
 
 	; Install the text service dlls
-	${If} ${RunningX64} ; This is a 64-bit Windows system
+	${If} ${IsNativeAMD64} ; This is a 64-bit x86-64/x64 Windows system
 		SetOutPath "$INSTDIR\x64"
-		${If} $UPDATEX64DLL == "True"
-			File "..\build64\PIMETextService\Release\PIMETextService.dll" ; put 64-bit PIMETextService.dll in x64 folder
-		${EndIf}
-		; Register COM objects (NSIS RegDLL command is broken and cannot be used)
-		ExecWait '"$SYSDIR\regsvr32.exe" /s "$INSTDIR\x64\PIMETextService.dll"'
+		File "..\build64\PIMETextService\Release\PIMETextService.dll"
+		!insertmacro RegisterTextService 64 "$INSTDIR\x64\PIMETextService.dll"
+	${ElseIf} ${IsNativeARM64} ; This is a native ARM64 Windows system
+		SetOutPath "$INSTDIR\arm64"
+		; ARM64X forwarder DLL (built in build_arm64\PIMETextService\Release\PIMETextService.dll)
+		File "..\build_arm64\PIMETextService\Release\PIMETextService.dll"
+		; Real native ARM64 DLL (built in build_arm64\PIMETextService\Release\PIMETextService_arm64.dll)
+		File "..\build_arm64\PIMETextService\Release\PIMETextService_arm64.dll"
+		; Real x64 DLL for emulated x64 / ARM64EC processes (built in build64\PIMETextService\Release\PIMETextService.dll)
+		File "/oname=PIMETextService_x64.dll" "..\build64\PIMETextService\Release\PIMETextService.dll"
+		; Register COM objects (only register the ARM64X forwarder DLL)
+		!insertmacro RegisterTextService 64 "$INSTDIR\arm64\PIMETextService.dll"
 	${EndIf}
+
 	SetOutPath "$INSTDIR\x86"
-	${If} $UPDATEX86DLL == "True"
-		File "..\build\PIMETextService\Release\PIMETextService.dll" ; put 32-bit PIMETextService.dll in x86 folder
-	${EndIf}
-	; Register COM objects (NSIS RegDLL command is broken and cannot be used)
-	ExecWait '"$SYSDIR\regsvr32.exe" /s "$INSTDIR\x86\PIMETextService.dll"'
+	File "..\build\PIMETextService\Release\PIMETextService.dll"
+	!insertmacro RegisterTextService 32 "$INSTDIR\x86\PIMETextService.dll"
 
 	; Launch the python server on startup
 	WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "PIMELauncher" "$INSTDIR\PIMELauncher.exe"
@@ -572,7 +473,7 @@ Section "" Register
 	WriteRegStr HKLM "Software\PIME" "" $INSTDIR
 	;Write an entry to Add & Remove applications
 	WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayName" $(PRODUCT_NAME)
-	WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+	WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
 	WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "Publisher" $(PRODUCT_PUBLISHER)
 	; WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\x86\PIMETextService.dll"
 	WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
@@ -594,37 +495,14 @@ Section "" Register
 		CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(SET_CHEWING_PHRASES).lnk" "$INSTDIR\python\python3\pythonw.exe" '"$INSTDIR\python\input_methods\chewing\config_tool.py" user_phrase_editor' "$INSTDIR\python\input_methods\chewing\images\phrase_editor.ico" 0
 	${EndIf}
 
-	${If} ${SectionIsSelected} ${checj}
-		CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(SET_CHECJ).lnk" "$INSTDIR\python\python3\pythonw.exe" '"$INSTDIR\python\cinbase\configtool.py" config checj' "$INSTDIR\python\input_methods\checj\icon.ico" 0
-	${EndIf}
-
-	${If} ${SectionIsSelected} ${cheliu}
-		CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(SET_CHELIU).lnk" "$INSTDIR\python\python3\pythonw.exe" '"$INSTDIR\python\cinbase\configtool.py" config cheliu' "$INSTDIR\python\input_methods\cheliu\icon.ico" 0
-	${EndIf}
-
-	${If} ${SectionIsSelected} ${chearray}
-		CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(SET_CHEARRAY).lnk" "$INSTDIR\python\python3\pythonw.exe" '"$INSTDIR\python\cinbase\configtool.py" config chearray' "$INSTDIR\python\input_methods\chearray\icon.ico" 0
-	${EndIf}
-
-	${If} ${SectionIsSelected} ${chedayi}
-		CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(SET_CHEDAYI).lnk" "$INSTDIR\python\python3\pythonw.exe" '"$INSTDIR\python\cinbase\configtool.py" config chedayi' "$INSTDIR\python\input_methods\chedayi\icon.ico" 0
-	${EndIf}
-
-	${If} ${SectionIsSelected} ${chepinyin}
-		CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(SET_CHEPINYIN).lnk" "$INSTDIR\python\python3\pythonw.exe" '"$INSTDIR\python\cinbase\configtool.py" config chepinyin' "$INSTDIR\python\input_methods\chepinyin\icon.ico" 0
-	${EndIf}
-
-	${If} ${SectionIsSelected} ${chesimplex}
-		CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(SET_CHESIMPLEX).lnk" "$INSTDIR\python\python3\pythonw.exe" '"$INSTDIR\python\cinbase\configtool.py" config chesimplex' "$INSTDIR\python\input_methods\chesimplex\icon.ico" 0
-	${EndIf}
-
-	${If} ${SectionIsSelected} ${chephonetic}
-		CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(SET_CHEPHONETIC).lnk" "$INSTDIR\python\python3\pythonw.exe" '"$INSTDIR\python\cinbase\configtool.py" config chephonetic' "$INSTDIR\python\input_methods\chephonetic\icon.ico" 0
-	${EndIf}
-
-	${If} ${SectionIsSelected} ${cheez}
-		CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(SET_CHEEZ).lnk" "$INSTDIR\python\python3\pythonw.exe" '"$INSTDIR\python\cinbase\configtool.py" config cheez' "$INSTDIR\python\input_methods\cheez\icon.ico" 0
-	${EndIf}
+	!insertmacro CreateCinBaseShortcut ${checj} $(SET_CHECJ) checj
+	!insertmacro CreateCinBaseShortcut ${cheliu} $(SET_CHELIU) cheliu
+	!insertmacro CreateCinBaseShortcut ${chearray} $(SET_CHEARRAY) chearray
+	!insertmacro CreateCinBaseShortcut ${chedayi} $(SET_CHEDAYI) chedayi
+	!insertmacro CreateCinBaseShortcut ${chepinyin} $(SET_CHEPINYIN) chepinyin
+	!insertmacro CreateCinBaseShortcut ${chesimplex} $(SET_CHESIMPLEX) chesimplex
+	!insertmacro CreateCinBaseShortcut ${chephonetic} $(SET_CHEPHONETIC) chephonetic
+	!insertmacro CreateCinBaseShortcut ${cheez} $(SET_CHEEZ) cheez
 
 	CreateShortCut "$SMPROGRAMS\$(PRODUCT_NAME)\$(UNINSTALL_PIME).lnk" "$INSTDIR\Uninstall.exe"
 SectionEnd
@@ -648,6 +526,9 @@ SectionEnd
 	!insertmacro MUI_DESCRIPTION_TEXT ${chephonetic} $(chephonetic_DESC)
     !insertmacro MUI_DESCRIPTION_TEXT ${cheez} $(cheez_DESC)
     !insertmacro MUI_DESCRIPTION_TEXT ${rime} $(rime_DESC)
+	!insertmacro MUI_DESCRIPTION_TEXT ${mcbopomofo} $(mcbopomofo_DESC)
+	!insertmacro MUI_DESCRIPTION_TEXT ${mcfoxim} $(mcfoxim_DESC)
+	!insertmacro MUI_DESCRIPTION_TEXT ${mctabim} $(mctabim_DESC)
 	!insertmacro MUI_DESCRIPTION_TEXT ${emojime} $(emojime_DESC)
 	!insertmacro MUI_DESCRIPTION_TEXT ${cheeng} $(cheeng_DESC)
 	!insertmacro MUI_DESCRIPTION_TEXT ${braille_chewing} $(braille_chewing_DESC)
@@ -656,31 +537,36 @@ SectionEnd
 ;Uninstaller Section
 Section "Uninstall"
 	${If} ${RunningX64}
-		SetRegView 64 ; disable registry redirection and use 64 bit Windows registry directly
-	${EndIf}
-
-	; Remove the launcher from auto-start
-	DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PIME"
-	DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "PIMELauncher"
-	DeleteRegKey HKLM "Software\PIME"
-
-	; Unregister COM objects (NSIS UnRegDLL command is broken and cannot be used)
-	ExecWait '"$SYSDIR\regsvr32.exe" /u /s "$INSTDIR\x86\PIMETextService.dll"'
-	${If} ${RunningX64}
-		ExecWait '"$SYSDIR\regsvr32.exe" /u /s "$INSTDIR\x64\PIMETextService.dll"'
-		RMDir /REBOOTOK /r "$INSTDIR\x64"
+	${OrIf} ${IsNativeARM64}
+		SetRegView 64 ; Disable WOW64 registry redirection on 64-bit systems
 	${EndIf}
 
 	; Try to terminate running PIMELauncher and the server process
-	; Otherwise we cannot replace it.
-	ExecWait '"$INSTDIR\PIMELauncher.exe" /quit'
-	Sleep 1000
-	Delete /REBOOTOK "$INSTDIR\PIMELauncher.exe"
+	!insertmacro StopPIMELauncher
+	; Unregister COM objects (NSIS UnRegDLL command is broken and cannot be used)
+	!insertmacro UnregisterTextService 32 "$INSTDIR\x86\PIMETextService.dll"
+	${If} ${IsNativeAMD64}
+		!insertmacro UnregisterTextService 64 "$INSTDIR\x64\PIMETextService.dll"
+	${ElseIf} ${IsNativeARM64}
+		!insertmacro UnregisterTextService 64 "$INSTDIR\arm64\PIMETextService.dll"
+	${EndIf}
 
-	RMDir /REBOOTOK /r "$INSTDIR\x86"
+	; Remove auto-start, uninstall, and product keys from registry
+	!insertmacro CleanPIMERegistry
+
+	; Safely delete binaries (which may be locked by running processes)
+	!insertmacro CleanOldBinaries
+	RMDir /REBOOTOK "$INSTDIR\x86"
+
+	${If} ${IsNativeAMD64}
+		RMDir /REBOOTOK "$INSTDIR\x64"
+	${ElseIf} ${IsNativeARM64}
+		RMDir /REBOOTOK "$INSTDIR\arm64"
+	${EndIf}
+
 	RMDir /REBOOTOK /r "$INSTDIR\python"
 	RMDir /REBOOTOK /r "$INSTDIR\node"
-    Delete "$INSTDIR\backends.json"
+	Delete "$INSTDIR\backends.json"
 
 	; Delete shortcuts in Start Menu
 	RMDir /r "$SMPROGRAMS\$(PRODUCT_NAME)"

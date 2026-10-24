@@ -19,15 +19,17 @@
 
 #ifndef _PIME_CLIENT_H_
 #define _PIME_CLIENT_H_
-#define NDEBUG
-#include <libIME2/src/TextService.h>
-#include <libIME2/src/KeyEvent.h>
-#include <libIME2/src/EditSession.h>
-#include "PIMELangBarButton.h"
 
-#include <unordered_map>
+#include "PIMELangBarButton.h"
+#include <libIME2/src/EditSession.h>
+#include <libIME2/src/KeyEvent.h>
+#include <libIME2/src/TextService.h>
+
+#include <nlohmann/json.hpp>
 #include <string>
-#include <json/json.h>
+#include <unordered_map>
+#include <memory>
+#include "AsyncConnector.h"
 
 namespace PIME {
 
@@ -44,6 +46,22 @@ public:
 	const std::string guid() const {
 		return guid_;
 	}
+
+	enum class State {
+		Disconnected,
+		Connecting,
+		Ready
+	};
+
+	State state() const noexcept {
+		return state_;
+	}
+
+	bool isReady() const noexcept {
+		return state_ == State::Ready;
+	}
+
+	bool ensureConnected();
 
 	// handlers for the text service
 	void onActivate();
@@ -75,45 +93,43 @@ public:
 	void onCompositionTerminated(bool forced);
 
 private:
-    static std::wstring getPipeName(const wchar_t* base_name);
-    HANDLE connectPipe(const wchar_t* pipeName, int timeoutMs);
+	void startAsyncConnect();
+	static std::wstring getPipeName(const wchar_t* baseName);
 
-    Json::Value createRpcRequest(const char* methodName);
-	bool callRpcMethod(Json::Value& request, Json::Value& response);
+	static constexpr int kDefaultRpcTimeoutMs = 2000;
+	static constexpr int kServerStartupTimeoutMs = 15000;
 
-    bool isPipeCreatedByPIMEServer(HANDLE pipe);
-    bool waitForRpcConnection();
-    bool callRpcPipe(HANDLE pipe, const std::string& serializedRequest, std::string& serializedReply);
-    void closeRpcConnection();
+	nlohmann::json createRpcRequest(const char* methodName);
+	bool callRpcMethod(nlohmann::json& request, nlohmann::json& response, int timeoutMs = kDefaultRpcTimeoutMs);
 
-	bool init();
-    void resetTextServiceState();
+	void resetTextServiceState();
 
-	void addKeyEventToRpcRequest(Json::Value& request, Ime::KeyEvent& keyEvent);
-    bool sendOnMenu(std::string button_id, Json::Value& result);
+	void addKeyEventToRpcRequest(nlohmann::json& request, Ime::KeyEvent& keyEvent);
+	bool sendOnMenu(std::string button_id, nlohmann::json& result);
 
-    bool handleRpcResponse(Json::Value& msg, Ime::EditSession* session = nullptr);
+	bool handleRpcResponse(nlohmann::json& msg, Ime::EditSession* session = nullptr);
 
-    // Update text service and UI status based on RPC responses.
-    void updateSelectionKeys(Json::Value& msg);
-    void updateMessageWindow(Json::Value& msg, Ime::EditSession* session, bool& endComposition);
-	void updateCommitString(Json::Value& msg, Ime::EditSession* session);
-	void updateComposition(Json::Value& msg, Ime::EditSession* session, bool& endComposition);
-	void updateLanguageButtons(Json::Value& msg);
-	void updatePreservedKeys(Json::Value& msg);
-	void updateKeyboardStatus(Json::Value& msg);
-    void updateCandidateList(Json::Value& msg, Ime::EditSession* session);
-    void updateUI(const Json::Value& data);
-    void updateStatus(Json::Value& msg, Ime::EditSession* session = nullptr);
+	// Update text service and UI status based on RPC responses.
+	void updateSelectionKeys(nlohmann::json& msg);
+	void updateMessageWindow(nlohmann::json& msg, Ime::EditSession* session, bool& endComposition);
+	void updateCommitString(nlohmann::json& msg, Ime::EditSession* session);
+	void updateComposition(nlohmann::json& msg, Ime::EditSession* session, bool& endComposition);
+	void updateLanguageButtons(nlohmann::json& msg);
+	void updatePreservedKeys(nlohmann::json& msg);
+	void updateKeyboardStatus(nlohmann::json& msg);
+	void updateCandidateList(nlohmann::json& msg, Ime::EditSession* session);
+	void updateUI(nlohmann::json& data);
+	void updateStatus(nlohmann::json& msg, Ime::EditSession* session = nullptr);
 
 private:
 	TextService* textService_;
 	std::string guid_;
-	HANDLE pipe_;
+	RpcPipe pipe_;
+	std::shared_ptr<AsyncConnector> connector_;
 	std::unordered_map<std::string, Ime::ComPtr<PIME::LangBarButton>> buttons_; // map buttons to string IDs
 	unsigned int nextSeqNum_;
 	bool isActivated_;
-    bool shouldWaitConnection_;
+	State state_;
 };
 
 }

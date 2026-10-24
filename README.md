@@ -10,12 +10,17 @@ Implement input methods easily for Windows via Text Services Framework:
 
 All parts are licensed under GNU LGPL v2.1 license.
 
+# Contributing
+Contributions using AI coding tools are welcomed! However, to ensure code quality, they must follow the rules in [AGENTS.md](AGENTS.md) to be accepted, and AI assistance must be clearly declared in pull requests, git commits, and file headers.
+
 # Development
 
 ## Tool Requirements
 *   [CMake](http://www.cmake.org/) >= 3.0
 *   [Visual Studio 2019](https://visualstudio.microsoft.com/vs)
+*   [Rust Toolchain](https://rustup.rs/) (Stable channel with `i686-pc-windows-msvc` target)
 *   [git](http://windows.github.com/)
+*   [Node.js](https://nodejs.org/) (Required for some backends like McBopomofo)
 
 ## How to Build
 *   Get source from github.
@@ -24,12 +29,20 @@ All parts are licensed under GNU LGPL v2.1 license.
         cd PIME
         git submodule update --init
 
-*   Use the following CMake commands to generate Visual Studio project.
+*   Ensure the 32-bit Rust target is installed:
 
-        cmake -G "Visual Studio 16 2019" -A Win32 <path to PIME source folder>
-        cmake -G "Visual Studio 16 2019" -A x64 <path to PIME source folder>
+        rustup target add i686-pc-windows-msvc
 
-*   Open generated project with Visual Studio and build it.
+*   Use `build.bat` to build everything, or use the following CMake commands to generate Visual Studio project.
+
+        cmake . -Bbuild -G "Visual Studio 16 2019" -A Win32
+        cmake --build build --config Release
+
+        # For 64-bit Text Service (Required for 64-bit apps)
+        cmake . -Bbuild64 -G "Visual Studio 16 2019" -A x64
+        cmake --build build64 --config Release --target PIMETextService
+
+*   The generated installer will be in the `installer` folder after running `makensis`.
 
 ## TSF References
 *   [Text Services Framework](http://msdn.microsoft.com/en-us/library/windows/desktop/ms629032%28v=vs.85%29.aspx)
@@ -73,3 +86,31 @@ All parts are licensed under GNU LGPL v2.1 license.
 
 # Bug Report
 Please report any issue to [here](https://github.com/EasyIME/PIME/issues).
+
+# Debugging
+If you encounter issues, you can run `PIMELauncher.exe` with the following debugging options:
+
+* **Live console output**:
+  ```powershell
+  PIMELauncher.exe /console
+  ```
+  Opens a console window displaying live `DEBUG` level logs for troubleshooting backend communication and internal events.
+
+* **Log to file (headless)**:
+  ```powershell
+  PIMELauncher.exe /log-file C:\path\to\pime.log
+  ```
+  Writes `DEBUG` level logs to the specified file while running silently in the background without popping up a console window.
+
+* **Quit running instance**:
+  ```powershell
+  PIMELauncher.exe /quit
+  ```
+
+* **Show help message**:
+  ```powershell
+  PIMELauncher.exe /help
+  # or: PIMELauncher.exe /?
+  ```
+
+When run normally without `/console` or `/log-file`, all debug logging is completely suppressed to avoid unnecessary I/O overhead.

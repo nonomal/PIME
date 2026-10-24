@@ -26,7 +26,19 @@ if __name__ == "__main__":
 sys.path.append(os.path.dirname(__file__))    
 
 
-from serviceManager import textServiceMgr
+from serviceManager import TextServiceManager
+
+
+def append_error_log(message):
+    try:
+        log_dir = os.path.join(os.path.expandvars("%LOCALAPPDATA%"), "PIME", "Logs")
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, "python_backend.log"), "a", encoding="utf-8") as log_file:
+            log_file.write(message)
+            if not message.endswith("\n"):
+                log_file.write("\n")
+    except Exception:
+        pass
 
 
 class Client(object):
@@ -39,9 +51,9 @@ class Client(object):
         self.isWindows8Above = msg["isWindows8Above"]
         self.isMetroApp = msg["isMetroApp"]
         self.isUiLess = msg["isUiLess"]
-        self.isUiLess = msg["isConsole"]
+        self.isConsole = msg["isConsole"]
         # create the text service
-        self.service = textServiceMgr.createService(self, self.guid)
+        self.service = self.server.createService(self, self.guid)
         return (self.service is not None)
 
     def handleRequest(self, msg): # msg is a json object
@@ -63,13 +75,33 @@ class Client(object):
 
 
 class Server(object):
-    def __init__(self):
+    """IPC backend server managing client sessions and text service dispatching."""
+
+    def __init__(self, base_dir: str):
+        """Initializes the server and loads text services from base_dir/input_methods.
+
+        Args:
+            base_dir: The base package directory on sys.path containing the
+                'input_methods' package. Cannot be None.
+        """
         self.clients = {}
+        self.serviceMgr = TextServiceManager()
+        try:
+            self.serviceMgr.load(base_dir)
+        except Exception as e:
+            append_error_log(f"ERROR: Failed to load text services from {base_dir}: {e}\n{traceback.format_exc()}")
+
+    def createService(self, client, guid):
+        """Creates a text service instance for the client associated with guid."""
+        return self.serviceMgr.createService(client, guid)
 
     def run(self):
+        """Runs the main request/reply loop reading from stdin and writing to stdout."""
         while True:
             line = ""
             client_id = ""
+            msg = None
+            client = None
             try:
                 line = input().strip()
                 if not line:
@@ -77,38 +109,57 @@ class Server(object):
                 # parse PIME requests (one request per line):
                 # request format: "<client_id>|<JSON string>\n"
                 # response format: "PIME_MSG|<client_id>|<JSON string>\n"
-                client_id, msg_text = line.split('|', maxsplit=1)
+                parts = line.split('|', maxsplit=1)
+                if len(parts) != 2:
+                    print("ERROR: malformed request:", line, file=sys.stderr)
+                    append_error_log("ERROR: malformed request: {0}\n".format(line))
+                    continue
+                client_id, msg_text = parts
                 msg = json.loads(msg_text)
                 client = self.clients.get(client_id)
                 if not client:
                     # create a Client instance for the client
                     client = Client(self)
                     self.clients[client_id] = client
-                    print("new client:", client_id)
+                    print("new client:", client_id, file=sys.stderr)
                 if msg.get("method") == "close":  # special handling for closing a client
                     self.remove_client(client_id)
+                    reply_dict = {"success": True}
+                    if "seqNum" in msg:
+                        reply_dict["seqNum"] = msg["seqNum"]
+                    reply_line = '|'.join(["PIME_MSG", client_id, json.dumps(reply_dict)])
+                    print(reply_line, flush=True)
                 else:
                     ret = client.handleRequest(msg)
                     # Send the response to the client via stdout
                     # one response per line in the format "PIME_MSG|<client_id>|<json reply>"
                     reply_line = '|'.join(["PIME_MSG", client_id, json.dumps(ret, ensure_ascii=False)])
-                    print(reply_line)
+                    print(reply_line, flush=True)
             except EOFError:
                 # stop the server
                 break
             except Exception as e:
-                print("ERROR:", e, line)
+                print("ERROR:", e, line, file=sys.stderr)
                 # print the exception traceback for ease of debugging
                 traceback.print_exc()
-                # generate an empty output containing {success: False} to prevent the client from being blocked
-                reply_line = '|'.join(["PIME_MSG", client_id, '{"success":false}'])
-                print(reply_line)
-                # Just terminate the python server process if any unknown error happens.
-                # The python server will be restarted later by PIMELauncher.
-                sys.exit(1)
+                append_error_log("ERROR: {0}\nREQUEST: {1}\n{2}\n".format(e, line, traceback.format_exc()))
+                
+                if client and client.service:
+                    client.service.currentReply = {}
+                
+                # generate an output containing {success: False} to prevent the client from being blocked
+                reply_dict = {"success": False}
+                if isinstance(msg, dict) and "seqNum" in msg:
+                    reply_dict["seqNum"] = msg["seqNum"]
+                reply_line = '|'.join(["PIME_MSG", client_id, json.dumps(reply_dict)])
+                print(reply_line, flush=True)
+                # Keep the backend alive after one bad request; tearing down an
+                # active TSF session can destabilize the foreground application.
+                continue
 
     def remove_client(self, client_id):
-        print("client disconnected:", client_id)
+        """Cleans up and removes an active client session by its ID."""
+        print("client disconnected:", client_id, file=sys.stderr)
         try:
             del self.clients[client_id]
         except KeyError:
@@ -116,7 +167,8 @@ class Server(object):
 
 
 def main():
-    server = Server()
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    server = Server(current_dir)
     server.run()
 
 

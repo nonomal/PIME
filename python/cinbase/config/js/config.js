@@ -129,6 +129,15 @@ if (!Date.now) {
 function loadConfig() {
     $.get(CONFIG_URL, function(data, status) {
         checjConfig = data.config;
+        if (imeFolderName == "chedayi" && typeof checjConfig.intelligentSelect === "undefined") {
+            checjConfig.intelligentSelect = true;
+        }
+        if (imeFolderName == "chedayi" && typeof checjConfig.intelligentSelectRecent === "undefined") {
+            checjConfig.intelligentSelectRecent = true;
+        }
+        if (imeFolderName == "chedayi" && typeof checjConfig.intelligentSelectContext === "undefined") {
+            checjConfig.intelligentSelectContext = true;
+        }
         cinCount = data.cincount;
         symbolsData = data.symbols;
         swkbData = data.swkb;
@@ -266,7 +275,11 @@ function updateConfig() {
         case "number":
             var inputValue = inputItem.value;
             if ($.isNumeric(inputValue)) {
-                inputValue = parseInt(inputValue);
+                inputValue = parseInt(inputValue, 10);
+            } else if (inputItem.name === "candPerPage") {
+                inputValue = 9;
+            } else if (inputItem.name === "candPerRow") {
+                inputValue = 1;
             }
             checjConfig[inputItem.name] = inputValue;
             break;
@@ -447,6 +460,10 @@ function pageReady() {
     else {
         $("#candPerRow").TouchSpin({min:1, max:10});
         $("#candPerPage").TouchSpin({min:1, max:10});
+    }
+    if (imeFolderName != "chedayi") {
+        $("#dayiSmartSelectionOptions").hide();
+        $("#dayiSmartSelectionOptions input").attr("name", "");
     }
     $("#candMaxItems").TouchSpin({min:100, max:10000});
     $("#fontSize").TouchSpin({min:6, max:200});

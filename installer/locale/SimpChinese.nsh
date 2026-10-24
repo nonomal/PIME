@@ -1,4 +1,4 @@
-!define LANG "SIMPCHINESE" ; Must be the lang name define by NSIS
+﻿!define LANG "SIMPCHINESE" ; Must be the lang name define by NSIS
 
 !insertmacro LANG_STRING INSTALLER_LANGUAGE_TITLE "安装程序语言"
 !insertmacro LANG_STRING INSTALL_LANGUAGE_MESSAGE "请选择安装程序语言"
@@ -13,11 +13,9 @@
 
 !insertmacro LANG_STRING AtLeastWinVista_MESSAGE "抱歉，本程序目前只能支持 Windows Vista 以上版本"
 !insertmacro LANG_STRING REBOOT_QUESTION "安装发生错误，无法完成。$\r$\n有时是有文件正在使用中，暂时无法删除或覆写。$\n$\n建议重新开机后，再次执行安装程序。$\r$\n你要立即重新开机吗？ (若你想要在稍后才重新开机请选择「否」)"
+!insertmacro LANG_STRING PENDING_REBOOT_QUESTION "先前的 PIME 卸载或更新尚未完成，需要重新启动计算机。$\r$\n$\r$\n如果未重启就继续安装，新安装的文件可能会在下次开机时被系统删除。$\r$\n$\r$\n您要现在重新启动计算机吗？（选“否”将退出安装程序，以便稍后重启）"
 !insertmacro LANG_STRING INST_FAILED_MESSAGE "安装发生错误，无法完成。$\n$\n有时是有文件正在使用中，暂时无法删除或覆写。$\n$\n建议重新开机后，再次执行安装程序。"
 !insertmacro LANG_STRING UNINSTALL_OLD "侦测到已安装旧版，是否要移除旧版后继续安装新版？"
-!insertmacro LANG_STRING DOWNLOAD_VCREDIST_QUESTION "这个程序需要 微软 VC++ Redistributable 更新才能运作，要自动下载安装？"
-!insertmacro LANG_STRING DOWNLOAD_VCREDIST_FAILED_MESSAGE "无法正确下载，请稍后再试，或手动安装 VC++ Redistributable"
-!insertmacro LANG_STRING INST_VCREDIST_FAILED_MESSAGE "VC++ Redistributable 并未正确安装，请参阅相关微软文档进行更新。"
 
 !insertmacro LANG_STRING SECTION_MAIN "PIME 输入法平台"
 !insertmacro LANG_STRING PYTHON_SECTION_GROUP "Python 输入法模块"
@@ -37,6 +35,9 @@
 !insertmacro LANG_STRING CHEPHONETIC 注音
 !insertmacro LANG_STRING CHEEZ 轻松
 !insertmacro LANG_STRING RIME 中州韵
+!insertmacro LANG_STRING MCBOPOMOFO 小麦注音
+!insertmacro LANG_STRING MCFOXIM 小麦族语
+!insertmacro LANG_STRING MCTABIM 小麦他命
 !insertmacro LANG_STRING EMOJIME emojime
 !insertmacro LANG_STRING CHEENG 英数
 !insertmacro LANG_STRING BRAILLE_CHEWING "盲文酷音"
@@ -61,6 +62,9 @@
 !insertmacro LANG_STRING chephonetic_DESC "安装注音输入法模块。"
 !insertmacro LANG_STRING cheez_DESC "安装轻松输入法模块。"
 !insertmacro LANG_STRING rime_DESC "安装中州韵输入法引擎，内含拼音、注音、仓颉、五笔、粤拼、吴语等数种输入方案。"
+!insertmacro LANG_STRING mcbopomofo_DESC "安装小麦注音输入法模块。"
+!insertmacro LANG_STRING mcfoxim_DESC "安装小麦族语输入法模块。"
+!insertmacro LANG_STRING mctabim_DESC "安装小麥他命输入法模块。"
 !insertmacro LANG_STRING emojime_DESC "安装 emojime 输入法模块。"
 !insertmacro LANG_STRING cheeng_DESC "安装英数输入法模块。"
 !insertmacro LANG_STRING braille_chewing_DESC "安装盲文酷音输入法模块。"

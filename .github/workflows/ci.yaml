@@ -1,0 +1,29 @@
+# CI workflow for PIME
+# Calls the reusable build-and-sign workflow with different signing policies:
+#   - CI builds (non-tag): test-signing, no approval required
+#   - Release builds (tag): release-signing, requires production environment approval
+
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  ci:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    uses: ./.github/workflows/build-and-sign.yaml
+    with:
+      signing-policy: test-signing
+    secrets: inherit
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/build-and-sign.yaml
+    with:
+      signing-policy: release-signing
+      environment: production
+      create-release: true
+    secrets: inherit

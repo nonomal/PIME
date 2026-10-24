@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 2.8.11)
+cmake_minimum_required(VERSION 3.15)
 
-# override default c/c++ flags, add /MT to link VC++ runtime statically.
-# NOTE: these two lines should go before the project() command according to CMake FAQ:
-# https://cmake.org/Wiki/CMake_FAQ#Make_Override_Files
-set(CMAKE_USER_MAKE_RULES_OVERRIDE	${CMAKE_CURRENT_SOURCE_DIR}/cmake/c_flag_overrides.cmake)
-set(CMAKE_USER_MAKE_RULES_OVERRIDE_CXX	${CMAKE_CURRENT_SOURCE_DIR}/cmake/cxx_flag_overrides.cmake)
+# Policy CMP0091 enables CMAKE_MSVC_RUNTIME_LIBRARY
+cmake_policy(SET CMP0091 NEW)
+
+# Statically link MSVC CRT (/MT in Release, /MTd in Debug) across all targets
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 project(PIME)
 
@@ -22,34 +22,42 @@ add_definitions(
 	/D_UNICODE=1 /DUNICODE=1 # do Unicode build
 	/D_CRT_SECURE_NO_WARNINGS # disable warnings about old libc functions
 	/GR- # turn off C++ RTTI
-)
-
-# These definitions are required for using libuv
-# Reference: https://github.com/dacap/libuv-cmake/blob/master/CMakeLists.txt
-# Windows version: https://msdn.microsoft.com/zh-tw/library/windows/desktop/aa383745(v=vs.85).aspx
-add_definitions(
-    -DWIN32_LEAN_AND_MEAN  # Avoid including unnecessary Windows header files
-    -D_WIN32_WINNT=0x0600  # 0x0600 is Windows Vista
+    -DWIN32_LEAN_AND_MEAN
+    -D_WIN32_WINNT=0x0600
 )
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/libIME2)
-
-# turn of some unnecessary build options for jsoncpp
-# Reference: http://stackoverflow.com/questions/3766740/overriding-a-default-option-value-in-cmake-from-a-parent-cmakelists-txt
-set(JSONCPP_WITH_TESTS OFF CACHE BOOL "")
-set(JSONCPP_WITH_POST_BUILD_UNITTEST OFF CACHE BOOL "")
-set(JSONCPP_WITH_PKGCONFIG_SUPPORT OFF CACHE BOOL "")
-add_subdirectory(${PROJECT_SOURCE_DIR}/jsoncpp)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/PIMETextService)
 
 # only build the following components for 32-bit x86 platform
 if("${CMAKE_SIZEOF_VOID_P}" EQUAL "4")
+    include(FetchContent)
 
-    # build our own forked version of libuv (used by PIMELauncher)
-    add_subdirectory(${PROJECT_SOURCE_DIR}/libuv)
+    FetchContent_Declare(
+        Corrosion
+        GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+        GIT_TAG v0.6 # Optionally specify a commit hash, version tag or branch here
+    )
+    FetchContent_MakeAvailable(Corrosion)
 
     add_subdirectory(${PROJECT_SOURCE_DIR}/PIMELauncher)
 endif("${CMAKE_SIZEOF_VOID_P}" EQUAL "4")
 
-enable_testing()
+include(CTest)
+
+if(BUILD_TESTING)
+    add_executable(PIMETextServiceCursorTest tests/composition_cursor_test.cpp)
+    target_include_directories(PIMETextServiceCursorTest PRIVATE ${PROJECT_SOURCE_DIR}/PIMETextService)
+    target_compile_features(PIMETextServiceCursorTest PRIVATE cxx_std_14)
+    add_test(NAME PIMETextServiceCursorTest COMMAND PIMETextServiceCursorTest)
+
+    add_executable(PIMETextServiceJsonTest tests/json_utils_test.cpp)
+    target_include_directories(PIMETextServiceJsonTest PRIVATE 
+        ${PROJECT_SOURCE_DIR}/PIMETextService
+        ${PROJECT_SOURCE_DIR}/json/single_include
+    )
+    target_compile_features(PIMETextServiceJsonTest PRIVATE cxx_std_17)
+    target_link_libraries(PIMETextServiceJsonTest PRIVATE gtest_main)
+    add_test(NAME PIMETextServiceJsonTest COMMAND PIMETextServiceJsonTest)
+endif()
